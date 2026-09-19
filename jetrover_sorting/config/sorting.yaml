@@ -1,0 +1,40 @@
+# Parameters for the jetrover_sorting node. Edit, then relaunch (no rebuild
+# needed when the workspace was built with --symlink-install).
+sorting:
+  ros__parameters:
+    # Pick window in image pixels (integers). The arm plays a fixed "pick"
+    # motion; a cube placed at its grasp point (arm in pick_debug) was measured
+    # at (330, 306) from the pick_init view on 2026-09-19. x is that centre
+    # +-12 px; y is 296-308 because grasps failed at y=314 and succeeded at
+    # y=301 (the fingers are thin along the reach direction).
+    roi:
+      x_min: 318
+      x_max: 342
+      y_min: 296
+      y_max: 308
+    # The detector only searches the pick window grown by this many pixels.
+    detector_roi_margin: 20
+
+    colors: ['red', 'green', 'blue']
+    # place_actions: ['place_center', 'place_left', 'place_right']   # same order as colors
+    place_actions: ['place_center_tank', 'place_left_tank', 'place_right_tank']   # same order as colors
+    pick_action: 'pick_tank'
+    home_action: 'pick_init'
+    park_action: 'init'            # played on shutdown; '' to skip
+    action_group_dir: '/home/ubuntu/share/arm_pc/ActionGroups'
+
+    confirm_frames: 30             # consecutive qualifying frames before a pick (~1 s)
+    miss_tolerance: 2              # detector dropouts tolerated inside a streak
+    max_jitter_px: 8.0             # block must sit still while being confirmed
+    min_radius: 10.0
+    detection_timeout: 0.5
+    settle_time: 0.7               # after homing, before judging the outcome
+    verify_window: 1.0
+    verify_hits: 3
+    action_timeout: 30.0
+
+    autostart: true
+    publish_debug_image: true      # ~/image_annotated, only rendered when subscribed
+    log_dir: '/home/ubuntu/share/tmp/jetrover_logs'   # bind-mounted: lands on the host
+    trace_detections: false        # true: also write every detector frame to detections_<session>.csv
+    detector_name: 'color_lab'     # written to every log row, for comparing detectors later
