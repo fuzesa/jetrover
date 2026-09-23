@@ -15,15 +15,15 @@ track_sort:
     max_range: 0.45
 
     # following (servo units per second per unit of image error; capped)
-    track_gain: 1200.0
+    track_gain: 900.0
     track_max_rate: 400.0
-    track_deadband: 0.02
+    track_deadband: 0.035
     servo_duration_min: 0.08
 
     # commit: target steady for this long, within this many pixels, servos quiet
     still_seconds: 0.75
-    still_radius_px: 12.0
-    still_max_step: 2.0
+    still_radius_px: 18.0
+    still_max_step: 4.0
 
     # grasp (vendor offsets: cube radius + measured bias; rgb/depth baseline)
     depth_offset: 0.03
