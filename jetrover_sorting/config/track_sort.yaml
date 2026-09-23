@@ -17,7 +17,7 @@ track_sort:
 
     # following (servo units per second per unit of image error; capped)
     track_gain: 900.0        # left-right
-    track_gain_pitch: 1300.0 # up-down
+    track_gain_pitch: 900.0 # up-down
     track_max_rate: 400.0
     track_deadband: 0.035
     servo_duration_min: 0.08
