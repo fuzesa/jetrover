@@ -31,10 +31,12 @@ class Blob:
 
 
 def detect_cubes(rgb, lab_ranges: dict, colors, min_area: int = 80,
-                 min_fill: float = 0.5, scale: int = 2) -> list[Blob]:
+                 min_fill: float = 0.5, scale: int = 2, border_fill: float = 0.2) -> list[Blob]:
     """rgb: HxWx3 uint8 (RGB order, as the camera publishes). lab_ranges:
     the 'Stereo' section of lab_config.yaml. Works on a downscaled copy, as
-    the vendor does; coordinates are returned at full resolution."""
+    the vendor does; coordinates are returned at full resolution. A blob
+    cut off by the image border is judged with the looser `border_fill`, so a
+    cube leaving the frame is still followed back in."""
     h, w = rgb.shape[:2]
     small = cv2.resize(rgb, (w // scale, h // scale))
     lab = cv2.cvtColor(cv2.GaussianBlur(small, (3, 3), 3), cv2.COLOR_RGB2LAB)
@@ -44,13 +46,16 @@ def detect_cubes(rgb, lab_ranges: dict, colors, min_area: int = 80,
         rng = lab_ranges[color]
         mask = cv2.inRange(lab, tuple(rng['min']), tuple(rng['max']))
         mask = cv2.dilate(cv2.erode(mask, kernel), kernel)
+        sh, sw = mask.shape[:2]
         for c in cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]:
             area = cv2.contourArea(c)
             if area < min_area:
                 continue
             (cx, cy), r = cv2.minEnclosingCircle(c)
             fill = area / (math.pi * r * r) if r > 0 else 0.0
-            if fill < min_fill:
+            bx, by, bw, bh = cv2.boundingRect(c)
+            at_border = bx <= 1 or by <= 1 or bx + bw >= sw - 1 or by + bh >= sh - 1
+            if fill < (border_fill if at_border else min_fill):
                 continue
             out.append(Blob(color, cx * scale, cy * scale, r * scale, fill))
     return out
@@ -114,11 +119,13 @@ class Follower:
         self.pitch = float(cfg.pitch_init)
         self._last_t: Optional[float] = None
         self.last_step = (0.0, 0.0)
+        self.last_rate = (0.0, 0.0)     # servo units per second of the last step
 
     def reset(self) -> None:
         self.yaw, self.pitch = float(self.cfg.yaw_init), float(self.cfg.pitch_init)
         self._last_t = None
         self.last_step = (0.0, 0.0)
+        self.last_rate = (0.0, 0.0)
 
     def update(self, ex: float, ey: float, now: float) -> tuple[int, int, float]:
         """ex, ey: normalised error, (target - centre) / frame size, in -0.5..0.5.
@@ -127,7 +134,7 @@ class Follower:
         c = self.cfg
         if self._last_t is None:            # first sighting: start the clock, no step
             self._last_t = now
-            self.last_step = (0.0, 0.0)
+            self.last_step = self.last_rate = (0.0, 0.0)
             return int(round(self.yaw)), int(round(self.pitch)), 0.0
         dt = min(max(now - self._last_t, c.min_dt), c.max_dt)
         self._last_t = now
@@ -142,27 +149,29 @@ class Follower:
         self.yaw = min(max(self.yaw + dy, c.yaw_min), c.yaw_max)
         self.pitch = min(max(self.pitch + dp, c.pitch_min), c.pitch_max)
         self.last_step = (dy, dp)
+        self.last_rate = (dy / dt, dp / dt)
         return int(round(self.yaw)), int(round(self.pitch)), dt
 
     def lost(self, now: float) -> None:
         """Target not seen this frame: hold position, keep the clock honest."""
         self._last_t = now
-        self.last_step = (0.0, 0.0)
+        self.last_step = self.last_rate = (0.0, 0.0)
 
 
 class StillnessGate:
     """The target must sit within `radius_px` of where it was for `hold_s`
-    seconds, with the servos no longer stepping, before a grab is allowed."""
+    seconds, with the arm turning slower than `max_rate` servo units per
+    second (frame-rate independent), before a grab is allowed."""
 
-    def __init__(self, hold_s: float = 0.75, radius_px: float = 12.0, max_step: float = 2.0):
-        self.hold_s, self.radius_px, self.max_step = hold_s, radius_px, max_step
+    def __init__(self, hold_s: float = 0.75, radius_px: float = 12.0, max_rate: float = 80.0):
+        self.hold_s, self.radius_px, self.max_rate = hold_s, radius_px, max_rate
         self._hist: deque = deque()   # (t, x, y)
 
     def reset(self) -> None:
         self._hist.clear()
 
-    def update(self, x: float, y: float, step: tuple[float, float], now: float) -> bool:
-        if abs(step[0]) > self.max_step or abs(step[1]) > self.max_step:
+    def update(self, x: float, y: float, rate: tuple[float, float], now: float) -> bool:
+        if abs(rate[0]) > self.max_rate or abs(rate[1]) > self.max_rate:
             self._hist.clear()          # arm still moving: start over
             return False
         self._hist.append((now, x, y))

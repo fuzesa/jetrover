@@ -83,7 +83,7 @@ class TrackSortNode(Node):
 
         self.follower = Follower(FollowerConfig(
             gain=p['track_gain'], max_rate=p['track_max_rate'], deadband=p['track_deadband']))
-        self.gate = StillnessGate(p['still_seconds'], p['still_radius_px'], p['still_max_step'])
+        self.gate = StillnessGate(p['still_seconds'], p['still_radius_px'], p['still_max_rate'])
         self.filter = TargetFilter(p['smoothing'], p['lost_hold'], p['depth_hold'])
         self.log = PickLogger(p['log_dir'], extra={'detector': 'track_sort'})
         self.get_logger().info(f'pick log: {self.log.path}')
@@ -117,10 +117,10 @@ class TrackSortNode(Node):
             'lab_config': '/home/ubuntu/share/lab_tool/lab_config.yaml',
             'log_dir': '/home/ubuntu/share/tmp/jetrover_logs',
             'autostart': True,
-            'min_blob_area': 80, 'min_fill': 0.5,
+            'min_blob_area': 80, 'min_fill': 0.5, 'border_fill': 0.2,
             'min_range': 0.12, 'max_range': 0.45,
             'track_gain': 1200.0, 'track_max_rate': 400.0, 'track_deadband': 0.02,
-            'still_seconds': 0.75, 'still_radius_px': 12.0, 'still_max_step': 2.0,
+            'still_seconds': 0.75, 'still_radius_px': 12.0, 'still_max_rate': 80.0,
             'servo_duration_min': 0.08,
             'depth_offset': 0.03, 'x_offset': -0.01,   # vendor fudges: cube radius + bias, rgb/depth baseline
             'gripper_open': 200, 'gripper_close': 600,
@@ -184,7 +184,8 @@ class TrackSortNode(Node):
         rgb = np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step // 3, 3)[:, :msg.width]
         with self._lock:
             depth = self._depth
-        blobs = detect_cubes(rgb, self.lab, self.colors, self.p['min_blob_area'], self.p['min_fill'])
+        blobs = detect_cubes(rgb, self.lab, self.colors, self.p['min_blob_area'], self.p['min_fill'],
+                             border_fill=self.p['border_fill'])
         target = pick_target(blobs, depth, self.p['min_range'], self.p['max_range'])
         self._frames += 1
         raw_blob, raw_z = target if target is not None else (None, None)
@@ -206,7 +207,7 @@ class TrackSortNode(Node):
         ey = y / msg.height - 0.5
         yaw, pitch, dt = self.follower.update(ex, ey, now)
         set_servo_position(self.servo_pub, max(dt, self.p['servo_duration_min']), ((1, yaw), (4, pitch)))
-        still = self.gate.update(x, y, self.follower.last_step, now)
+        still = self.gate.update(x, y, self.follower.last_rate, now)
         self._status(now, f'following {color} z={z if z is None else round(z, 3)} '
                           f'still={self.gate.progress:.0%}')
         if still and z is not None and self._k is not None:

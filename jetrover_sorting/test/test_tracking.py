@@ -94,13 +94,13 @@ def test_follower_long_gap_is_not_a_huge_step():
 
 
 def test_stillness_gate():
-    g = StillnessGate(hold_s=0.75, radius_px=12, max_step=2.0)
+    g = StillnessGate(hold_s=0.75, radius_px=12, max_rate=80.0)
     t = 0.0
     for _ in range(40):                                       # 1.3 s of a steady target
         ok = g.update(320 + (t * 37 % 5), 180, (0.0, 0.0), t)
         t += 1 / 30
     assert ok and g.progress == 1.0
-    assert not g.update(320, 180, (5.0, 0.0), t)             # arm stepped: reset
+    assert not g.update(320, 180, (150.0, 0.0), t)           # arm turning fast: reset
     assert g.progress == 0.0
     t += 1 / 30
     for i in range(40):                                       # target drifting 3 px/frame
@@ -147,3 +147,24 @@ def test_filter_smooths_and_restarts_on_jump_or_colour_change():
     c, x, _, z = f.update(Blob('blue', 310, 180, 25, 0.9), None, 0.06)
     assert (c, x, z) == ('blue', 310, None)             # new target: no stale depth
     assert f.update(Blob('blue', 450, 180, 25, 0.9), 0.3, 0.09)[1] == 450  # jumped: no smoothing
+
+
+def test_stillness_gate_is_frame_rate_independent():
+    """The same gentle centring (40 units/s) must not reset the gate at 8 fps
+    any more than at 30 fps. The old per-frame limit failed exactly this."""
+    for fps in (8, 30):
+        g = StillnessGate(hold_s=0.75, radius_px=12, max_rate=80.0)
+        f = Follower(FollowerConfig(gain=900.0, deadband=0.035))
+        ok, n = False, int(fps * 1.2)
+        for k in range(n + 1):
+            t = k / fps
+            f.update(0.045, 0.0, t)                            # small steady offset: gentle centring
+            ok = g.update(320, 180, f.last_rate, t) or ok
+        assert ok, fps
+
+
+def test_cube_cut_off_by_the_border_is_still_detected():
+    img = frame([((220, 40, 40), (0, 150, 18, 40))])    # 18 of 40 px visible at the left edge
+    assert detect_cubes(img, LAB, ['red']) != []
+    sleeve = frame([((220, 40, 40), (200, 150, 300, 30))])
+    assert detect_cubes(sleeve, LAB, ['red']) == []    # away from the border the strict limit holds

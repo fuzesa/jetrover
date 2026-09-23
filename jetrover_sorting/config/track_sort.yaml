@@ -11,6 +11,7 @@ track_sort:
     # detection
     min_blob_area: 80        # px at half resolution
     min_fill: 0.5            # contour area / enclosing circle; rejects sleeves and arms
+    border_fill: 0.2         # looser limit for blobs cut off by the image edge
     min_range: 0.12          # m; blobs measurably outside this range are ignored
     max_range: 0.45
 
@@ -26,7 +27,7 @@ track_sort:
     # commit: target steady for this long, within this many pixels, servos quiet
     still_seconds: 0.75
     still_radius_px: 18.0
-    still_max_step: 4.0
+    still_max_rate: 80.0     # servo units per second; arm turning faster than this = not still
 
     # grasp (vendor offsets: cube radius + measured bias; rgb/depth baseline)
     depth_offset: 0.03
