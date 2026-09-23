@@ -82,7 +82,9 @@ class TrackSortNode(Node):
             raise FileNotFoundError(f'action groups missing: {missing}')
 
         self.follower = Follower(FollowerConfig(
-            gain=p['track_gain'], max_rate=p['track_max_rate'], deadband=p['track_deadband']))
+            yaw_init=LOOKOUT[0][1], pitch_init=LOOKOUT[3][1],
+            gain=p['track_gain'], gain_pitch=p['track_gain_pitch'],
+            max_rate=p['track_max_rate'], deadband=p['track_deadband']))
         self.gate = StillnessGate(p['still_seconds'], p['still_radius_px'], p['still_max_rate'])
         self.filter = TargetFilter(p['smoothing'], p['lost_hold'], p['depth_hold'])
         self.log = PickLogger(p['log_dir'], extra={'detector': 'track_sort'})
@@ -119,7 +121,7 @@ class TrackSortNode(Node):
             'autostart': True,
             'min_blob_area': 80, 'min_fill': 0.5, 'border_fill': 0.2,
             'min_range': 0.12, 'max_range': 0.45,
-            'track_gain': 1200.0, 'track_max_rate': 400.0, 'track_deadband': 0.02,
+            'track_gain': 1200.0, 'track_gain_pitch': 1200.0, 'track_max_rate': 400.0, 'track_deadband': 0.02,
             'still_seconds': 0.75, 'still_radius_px': 12.0, 'still_max_rate': 80.0,
             'servo_duration_min': 0.08,
             'depth_offset': 0.03, 'x_offset': -0.01,   # vendor fudges: cube radius + bias, rgb/depth baseline

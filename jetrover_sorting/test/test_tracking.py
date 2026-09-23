@@ -73,17 +73,17 @@ def test_follower_is_frame_rate_independent():
     fast = run_follower(30, 0.5)
     assert slow.yaw < 500 and fast.yaw < 500                  # target right -> yaw decreases
     assert abs(slow.yaw - fast.yaw) < 5
-    assert slow.pitch == fast.pitch == 150
+    assert slow.pitch == fast.pitch == 120
 
 
 def test_follower_rate_cap_and_deadband():
     f = Follower(FollowerConfig(max_rate=400.0))
     f.update(0.5, 0.5, 0.0)
     y1, p1, _ = f.update(0.5, 0.5, 0.1)                       # dt = 0.1 -> at most 40 units
-    assert 500 - y1 <= 40 and 150 - p1 <= 40
+    assert 500 - y1 <= 40 and 120 - p1 <= 40
     f2 = Follower(FollowerConfig())
     f2.update(0.01, -0.01, 0.0)
-    assert f2.update(0.01, -0.01, 0.033)[:2] == (500, 150)
+    assert f2.update(0.01, -0.01, 0.033)[:2] == (500, 120)
 
 
 def test_follower_long_gap_is_not_a_huge_step():
@@ -168,3 +168,15 @@ def test_cube_cut_off_by_the_border_is_still_detected():
     assert detect_cubes(img, LAB, ['red']) != []
     sleeve = frame([((220, 40, 40), (200, 150, 300, 30))])
     assert detect_cubes(sleeve, LAB, ['red']) == []    # away from the border the strict limit holds
+
+
+def test_separate_pitch_gain():
+    f = Follower(FollowerConfig(gain=900.0, gain_pitch=1800.0, pitch_min=0))
+    f.update(0.1, 0.1, 0.0)
+    f.update(0.1, 0.1, 0.1)
+    dy, dp = f.last_step
+    assert dp == pytest.approx(2 * dy)                        # pitch moves twice as fast
+    g = Follower(FollowerConfig(gain=900.0, pitch_min=0))
+    g.update(0.1, 0.1, 0.0)
+    g.update(0.1, 0.1, 0.1)
+    assert g.last_step[0] == pytest.approx(g.last_step[1])     # default: same gain

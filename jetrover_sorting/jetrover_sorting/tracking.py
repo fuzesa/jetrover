@@ -94,7 +94,7 @@ def depth_at(depth_mm, x: float, y: float, half: int = 5,
 @dataclass
 class FollowerConfig:
     yaw_init: int = 500
-    pitch_init: int = 150
+    pitch_init: int = 120        # must match the look-out pose the node homes to
     yaw_min: int = 0
     yaw_max: int = 1000
     pitch_min: int = 100
@@ -103,6 +103,7 @@ class FollowerConfig:
     # = target a full frame width away). ~1200 moves a target half a frame off
     # centre by 20 units per frame at 30 fps.
     gain: float = 1200.0
+    gain_pitch: Optional[float] = None   # up/down gain; None = same as `gain`
     max_rate: float = 400.0     # servo units per second, absolute cap
     deadband: float = 0.02      # normalised; inside this we do not move
     min_dt: float = 0.01
@@ -140,12 +141,13 @@ class Follower:
         self._last_t = now
         cap = c.max_rate * dt
 
-        def step(err):
+        def step(err, gain):
             if abs(err) <= c.deadband:
                 return 0.0
-            return max(-cap, min(cap, -c.gain * err * dt))
+            return max(-cap, min(cap, -gain * err * dt))
 
-        dy, dp = step(ex), step(ey)
+        dy = step(ex, c.gain)
+        dp = step(ey, c.gain if c.gain_pitch is None else c.gain_pitch)
         self.yaw = min(max(self.yaw + dy, c.yaw_min), c.yaw_max)
         self.pitch = min(max(self.pitch + dp, c.pitch_min), c.pitch_max)
         self.last_step = (dy, dp)
