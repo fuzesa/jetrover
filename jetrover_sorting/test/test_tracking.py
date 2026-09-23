@@ -1,11 +1,8 @@
-import math
-
-import cv2
 import numpy as np
 import pytest
 
-from jetrover_sorting.tracking import (Blob, Follower, FollowerConfig, StillnessGate,
-                                       depth_at, detect_cubes, pick_target)
+from jetrover_sorting.tracking import (Blob, Follower, FollowerConfig, StillnessGate, TargetFilter,
+                                       depth_at, depth_of_blob, detect_cubes, pick_target)
 
 LAB = {'red': {'min': [0, 142, 125], 'max': [255, 255, 255]},
        'green': {'min': [30, 0, 105], 'max': [255, 113, 255]},
@@ -52,12 +49,12 @@ def test_depth_at_handles_holes_and_too_close():
 
 def test_pick_target_prefers_largest_within_range_and_drops_far_ones():
     d = np.full((360, 640), 300, np.uint16)
-    d[0:50, 0:50] = 2500                                # a shirt across the room
-    far_big = Blob('red', 25, 25, 40, 0.9)
+    d[0:120, 0:120] = 2500                              # a shirt across the room
+    far_big = Blob('red', 50, 50, 40, 0.9)
     near_small = Blob('blue', 320, 180, 20, 0.9)
-    near_big = Blob('green', 400, 200, 30, 0.9)
+    near_big = Blob('green', 450, 200, 30, 0.9)
     assert pick_target([far_big, near_small, near_big], d, 0.12, 0.45)[0] is near_big
-    d[190:210, 390:410] = 0                             # depth hole on the big one: still tracked, z None
+    d[130:280, 380:530] = 0                             # depth hole over the whole big one: z None
     b, z = pick_target([near_big, near_small], d, 0.12, 0.45)
     assert b is near_big and z is None
     assert pick_target([], d, 0.12, 0.45) is None
@@ -116,3 +113,37 @@ def test_stillness_needs_the_full_hold_time():
     g = StillnessGate(hold_s=0.75)
     assert not any(g.update(320, 180, (0.0, 0.0), i / 30) for i in range(20))   # 0.63 s
     assert g.update(320, 180, (0.0, 0.0), 0.76)
+
+
+def test_depth_of_blob_survives_misalignment_and_edge_holes():
+    d = np.full((360, 640), 900, np.uint16)             # background at 0.9 m
+    d[160:200, 328:368] = 220                           # cube in the depth image, shifted 28 px right
+    d[160:200, 300:328] = 0                             # shadow hole on its left edge
+    blob = Blob('red', 320, 180, 20, 0.9)               # where the colour image sees it
+    assert depth_at(d, blob.x, blob.y) is None          # the old 11x11 centre patch: hole
+    assert depth_of_blob(d, blob) == pytest.approx(0.22)
+
+
+def test_depth_of_blob_none_when_all_too_close():
+    d = np.full((360, 640), 60, np.uint16)
+    assert depth_of_blob(d, Blob('red', 320, 180, 20, 0.9)) is None
+
+
+def test_filter_bridges_dropouts_and_depth_holes():
+    f = TargetFilter(alpha=0.5, hold_s=0.3, depth_hold_s=0.6)
+    b = Blob('red', 320, 180, 25, 0.9)
+    assert f.update(b, 0.25, 0.0) == ('red', 320, 180, 0.25)
+    assert f.update(None, None, 0.2)[3] == 0.25          # dropped frame bridged
+    assert f.update(None, None, 0.5) is None             # lost after hold_s
+    f.update(b, 0.25, 1.0)
+    assert f.update(b, None, 1.5)[3] == 0.25             # depth hole bridged
+    assert f.update(b, None, 1.7)[3] is None             # ... but not forever
+
+
+def test_filter_smooths_and_restarts_on_jump_or_colour_change():
+    f = TargetFilter(alpha=0.5, jump_px=60)
+    f.update(Blob('red', 300, 180, 25, 0.9), 0.25, 0.0)
+    assert f.update(Blob('red', 310, 180, 25, 0.9), 0.25, 0.03)[1] == 305   # halfway
+    c, x, _, z = f.update(Blob('blue', 310, 180, 25, 0.9), None, 0.06)
+    assert (c, x, z) == ('blue', 310, None)             # new target: no stale depth
+    assert f.update(Blob('blue', 450, 180, 25, 0.9), 0.3, 0.09)[1] == 450  # jumped: no smoothing

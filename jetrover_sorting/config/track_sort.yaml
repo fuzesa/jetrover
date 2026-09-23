@@ -19,6 +19,9 @@ track_sort:
     track_max_rate: 400.0
     track_deadband: 0.035
     servo_duration_min: 0.08
+    smoothing: 0.5           # 0..1, share of each new detection taken (lower = smoother, laggier)
+    lost_hold: 0.3           # s a missing detection is bridged before counting as lost
+    depth_hold: 0.6          # s the last valid depth stays usable during holes
 
     # commit: target steady for this long, within this many pixels, servos quiet
     still_seconds: 0.75

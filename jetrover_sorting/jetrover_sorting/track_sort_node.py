@@ -42,7 +42,8 @@ from servo_controller_msgs.msg import ServosPosition
 
 from .fsm import PickRecord
 from .pick_log import PickLogger
-from .tracking import Follower, FollowerConfig, StillnessGate, detect_cubes, pick_target
+from .tracking import (Blob, Follower, FollowerConfig, StillnessGate, TargetFilter,
+                       detect_cubes, pick_target)
 
 # camera frame -> gripper frame (vendor track_and_grab.py); validated on
 # 2026-09-19 with tools/locate_cube.py: linear, repeatable, ~15 mm bias
@@ -83,6 +84,7 @@ class TrackSortNode(Node):
         self.follower = Follower(FollowerConfig(
             gain=p['track_gain'], max_rate=p['track_max_rate'], deadband=p['track_deadband']))
         self.gate = StillnessGate(p['still_seconds'], p['still_radius_px'], p['still_max_step'])
+        self.filter = TargetFilter(p['smoothing'], p['lost_hold'], p['depth_hold'])
         self.log = PickLogger(p['log_dir'], extra={'detector': 'track_sort'})
         self.get_logger().info(f'pick log: {self.log.path}')
 
@@ -123,7 +125,7 @@ class TrackSortNode(Node):
             'depth_offset': 0.03, 'x_offset': -0.01,   # vendor fudges: cube radius + bias, rgb/depth baseline
             'gripper_open': 200, 'gripper_close': 600,
             'reach_seconds': 1.2, 'lift': 0.03,
-            'lost_timeout': 1.0,
+            'smoothing': 0.5, 'lost_hold': 0.3, 'depth_hold': 0.6,
         }
         return {k: self.declare_parameter(k, v).value for k, v in d.items()}
 
@@ -151,6 +153,7 @@ class TrackSortNode(Node):
         set_servo_position(self.servo_pub, 1.0, LOOKOUT + ((10, self.p['gripper_open']),))
         self.follower.reset()
         self.gate.reset()
+        self.filter.reset()
         time.sleep(1.2)
 
     def _srv_start(self, request, response):
@@ -184,23 +187,31 @@ class TrackSortNode(Node):
         blobs = detect_cubes(rgb, self.lab, self.colors, self.p['min_blob_area'], self.p['min_fill'])
         target = pick_target(blobs, depth, self.p['min_range'], self.p['max_range'])
         self._frames += 1
+        raw_blob, raw_z = target if target is not None else (None, None)
+        tracked = self.filter.update(raw_blob, raw_z, now)
 
-        if target is None:
+        if tracked is None:
             self.follower.lost(now)
             self.gate.reset()
             self._status(now, 'searching')
             return
-        blob, z = target
+        color, x, y, z = tracked
+        if raw_blob is None:                    # brief dropout: hold still, keep the clock
+            self.follower.lost(now)
+            self._status(now, f'following {color} (held) z={z if z is None else round(z, 3)} '
+                              f'still={self.gate.progress:.0%}')
+            return
         self._last_seen = now
-        ex = blob.x / msg.width - 0.5
-        ey = blob.y / msg.height - 0.5
+        ex = x / msg.width - 0.5
+        ey = y / msg.height - 0.5
         yaw, pitch, dt = self.follower.update(ex, ey, now)
         set_servo_position(self.servo_pub, max(dt, self.p['servo_duration_min']), ((1, yaw), (4, pitch)))
-        still = self.gate.update(blob.x, blob.y, self.follower.last_step, now)
-        self._status(now, f'following {blob.color} z={z if z is None else round(z, 3)} '
+        still = self.gate.update(x, y, self.follower.last_step, now)
+        self._status(now, f'following {color} z={z if z is None else round(z, 3)} '
                           f'still={self.gate.progress:.0%}')
         if still and z is not None and self._k is not None:
             self._busy = True
+            blob = Blob(color, x, y, raw_blob.radius, raw_blob.fill)
             threading.Thread(target=self._grab, args=(blob, z, now), daemon=True).start()
 
     def _status(self, now: float, text: str) -> None:

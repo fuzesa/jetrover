@@ -56,6 +56,23 @@ def detect_cubes(rgb, lab_ranges: dict, colors, min_area: int = 80,
     return out
 
 
+def depth_of_blob(depth_mm, blob, margin_px: int = 30, pct: float = 20.0,
+                  min_mm: int = 100, max_mm: int = 5000, min_valid: int = 20) -> Optional[float]:
+    """Depth (metres) of a blob, robust to the depth/colour misalignment and to
+    edge holes of a structured-light sensor: search a window covering the blob
+    plus `margin_px` (the colour->depth shift is ~20 px at 20 cm), and take a
+    low percentile of the valid readings. The cube (and the hand holding it) is
+    the nearest surface there; background and holes lose."""
+    h, w = depth_mm.shape[:2]
+    r = int(blob.radius * 0.8) + margin_px
+    xi, yi = int(round(blob.x)), int(round(blob.y))
+    patch = depth_mm[max(yi - r, 0):min(yi + r + 1, h), max(xi - r, 0):min(xi + r + 1, w)]
+    valid = patch[(patch > min_mm) & (patch < max_mm)]
+    if valid.size < min_valid:
+        return None
+    return float(np.percentile(valid, pct)) / 1000.0
+
+
 def depth_at(depth_mm, x: float, y: float, half: int = 5,
              min_mm: int = 100, max_mm: int = 5000) -> Optional[float]:
     """Median valid depth (metres) in a small window, or None if there is no
@@ -171,9 +188,51 @@ def pick_target(blobs: list[Blob], depth_mm, min_range: float, max_range: float)
     shirt across the room) are dropped; too close is kept but flagged as None."""
     best = None
     for b in sorted(blobs, key=lambda b: -b.radius):
-        z = depth_at(depth_mm, b.x, b.y) if depth_mm is not None else None
+        z = depth_of_blob(depth_mm, b) if depth_mm is not None else None
         if z is not None and (z > max_range or z < min_range):
             continue
         best = (b, z)
         break
     return best
+
+
+class TargetFilter:
+    """Smooths the tracked position (less twitch) and bridges short gaps: a
+    frame without the target, or without valid depth, does not reset anything
+    unless it lasts longer than `hold_s`."""
+
+    def __init__(self, alpha: float = 0.5, hold_s: float = 0.3, depth_hold_s: float = 0.6,
+                 jump_px: float = 60.0):
+        self.alpha, self.hold_s, self.depth_hold_s, self.jump_px = alpha, hold_s, depth_hold_s, jump_px
+        self.reset()
+
+    def reset(self) -> None:
+        self.x = self.y = None
+        self.color = None
+        self.z = None
+        self._t_seen = self._t_depth = -1e9
+
+    def update(self, blob, z, now: float):
+        """Returns (color, x, y, z) smoothed, or None if the target is lost."""
+        if blob is None:
+            return None if now - self._t_seen > self.hold_s else (self.color, self.x, self.y, self._z(now))
+        jumped = (self.x is None or blob.color != self.color
+                  or math.hypot(blob.x - self.x, blob.y - self.y) > self.jump_px)
+        if jumped:
+            self.x, self.y, self.color, self.z = blob.x, blob.y, blob.color, None
+            self._t_depth = -1e9
+        else:
+            a = self.alpha
+            self.x += a * (blob.x - self.x)
+            self.y += a * (blob.y - self.y)
+        self._t_seen = now
+        if z is not None:
+            self.z, self._t_depth = z, now
+        return self.color, self.x, self.y, self._z(now)
+
+    def _z(self, now):
+        return self.z if now - self._t_depth <= self.depth_hold_s else None
+
+    @property
+    def lost_for(self):
+        return self._t_seen
