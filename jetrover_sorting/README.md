@@ -55,3 +55,20 @@ With the launch running (`autostart:=false`), run `python3 tools/calibrate_roi.p
 and paste the block it prints into `config/sorting.yaml`. (The vendor debug mode
 `ros2 launch example color_sorting_node.launch.py debug:=true` also works, but
 needs a display.)
+
+## Hand-held cube demo (track_sort)
+
+Follows a cube held in front of the camera, takes it, and drops it in the box
+for its colour. Runs on the lean stack (no odometry, IMU, EKF, IR, point cloud):
+
+    ros2 launch ~/share/tmp/jetrover/jetrover_sorting/launch/lean_tracking.launch.py
+    ros2 run jetrover_sorting track_sort --ros-args \
+        --params-file ~/share/tmp/jetrover/jetrover_sorting/config/track_sort.yaml
+
+`/track_sort/start` and `/track_sort/stop` (std_srvs/Trigger) toggle tracking;
+`/track_sort/state` reports what it is doing. Tuning lives in
+`config/track_sort.yaml`; the following gains are the first thing to adjust if
+the arm hunts (lower `track_gain`) or lags (raise it).
+
+The `_tank` action groups are generated, not committed:
+`python3 tools/make_tank_actions.py 13 --close 570 --hold 620`.

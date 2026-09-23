@@ -14,6 +14,8 @@
   <exec_depend>interfaces</exec_depend>
   <exec_depend>servo_controller</exec_depend>
   <exec_depend>servo_controller_msgs</exec_depend>
+  <exec_depend>kinematics</exec_depend>
+  <exec_depend>kinematics_msgs</exec_depend>
   <!-- launch-time only: vendor bring-up and the colour detector -->
   <exec_depend>controller</exec_depend>
   <exec_depend>peripherals</exec_depend>

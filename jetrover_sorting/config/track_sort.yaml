@@ -1,0 +1,34 @@
+# Parameters for the track_sort node (hand-held cube demo).
+track_sort:
+  ros__parameters:
+    colors: ['red', 'green', 'blue']
+    place_actions: ['place_center_tank', 'place_left_tank', 'place_right_tank']   # same order
+    action_group_dir: '/home/ubuntu/share/arm_pc/ActionGroups'
+    lab_config: '/home/ubuntu/share/lab_tool/lab_config.yaml'
+    log_dir: '/home/ubuntu/share/tmp/jetrover_logs'
+    autostart: true
+
+    # detection
+    min_blob_area: 80        # px at half resolution
+    min_fill: 0.5            # contour area / enclosing circle; rejects sleeves and arms
+    min_range: 0.12          # m; blobs measurably outside this range are ignored
+    max_range: 0.45
+
+    # following (servo units per second per unit of image error; capped)
+    track_gain: 1200.0
+    track_max_rate: 400.0
+    track_deadband: 0.02
+    servo_duration_min: 0.08
+
+    # commit: target steady for this long, within this many pixels, servos quiet
+    still_seconds: 0.75
+    still_radius_px: 12.0
+    still_max_step: 2.0
+
+    # grasp (vendor offsets: cube radius + measured bias; rgb/depth baseline)
+    depth_offset: 0.03
+    x_offset: -0.01
+    gripper_open: 200
+    gripper_close: 600
+    reach_seconds: 1.2
+    lift: 0.03

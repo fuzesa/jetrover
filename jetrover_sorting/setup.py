@@ -24,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'sorting = jetrover_sorting.sorting_node:main',
+            'track_sort = jetrover_sorting.track_sort_node:main',
         ],
     },
 )
