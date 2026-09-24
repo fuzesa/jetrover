@@ -83,3 +83,13 @@ It stops the vendor app service, pins the CPU clocks, starts the container and
 runs `exhibition.launch.py` (lean stack + track_sort). Ctrl-C stops it.
 After a code or config change: rsync from the Mac, then run it again. New
 files (like a new launch file) need one `colcon build` in the container first.
+
+## Screen for the audience
+
+With a monitor on the Nano's HDMI or DisplayPort and its desktop running, set
+`display: true` in `config/track_sort.yaml`. `start_demo.sh` grants the
+container access to the screen (`xhost`, `DISPLAY=:0`). The view is mirrored,
+full screen, 12 fps, drawn in its own thread; if no screen is available the
+node logs a warning and carries on without it. Texts are configurable (ASCII
+only; a Romanian set is in the config, commented out). For two monitors, set
+them to mirror each other in the Nano's display settings.

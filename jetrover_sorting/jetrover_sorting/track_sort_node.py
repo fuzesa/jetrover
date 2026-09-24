@@ -40,6 +40,7 @@ from servo_controller.action_group_controller import ActionGroupController
 from servo_controller.bus_servo_control import set_servo_position
 from servo_controller_msgs.msg import ServosPosition
 
+from .display import Overlay, Texts, render
 from .fsm import PickRecord
 from .pick_log import PickLogger
 from .tracking import (Blob, Follower, FollowerConfig, StillnessGate, TargetFilter,
@@ -94,6 +95,7 @@ class TrackSortNode(Node):
         self._depth: Optional[np.ndarray] = None
         self._k: Optional[list] = None
         self._busy = False            # arm sequence in progress
+        self._busy_color = None
         self._enabled = bool(p['autostart'])
         self._attempts = 0
         self._last_seen = 0.0
@@ -109,6 +111,14 @@ class TrackSortNode(Node):
         self.create_service(Trigger, '~/stop', self._srv_stop)
 
         self._ready = False
+        self._phase = None            # None | 'grabbing' | 'placing' while busy
+        self._view = None             # (rgb, Overlay) for the display thread
+        self._view_lock = threading.Lock()
+        if p['display']:
+            self._texts = Texts(p['text_searching'], p['text_following'], p['text_steady'],
+                                p['text_grabbing'], p['text_placing'],
+                                dict(zip(self.colors, p['text_colors'])))
+            threading.Thread(target=self._display_loop, daemon=True, name='display').start()
         self.create_timer(0.5, self._bringup)
 
     def _declare_params(self) -> dict:
@@ -128,6 +138,11 @@ class TrackSortNode(Node):
             'gripper_open': 200, 'gripper_close': 600,
             'reach_seconds': 1.2, 'lift': 0.03,
             'smoothing': 0.5, 'lost_hold': 0.3, 'depth_hold': 0.6,
+            'display': False, 'display_fps': 12.0, 'display_fullscreen': True, 'display_mirror': True,
+            'text_searching': 'Show me a cube!', 'text_following': 'I see a {color} cube',
+            'text_steady': 'Hold it still...', 'text_grabbing': 'Got it!',
+            'text_placing': 'The {color} cube goes in its box',
+            'text_colors': ['red', 'green', 'blue'],
         }
         return {k: self.declare_parameter(k, v).value for k, v in d.items()}
 
@@ -179,11 +194,20 @@ class TrackSortNode(Node):
         with self._lock:
             self._k = list(msg.k)
 
+    def _show(self, rgb, overlay: Overlay) -> None:
+        if self.p['display']:
+            with self._view_lock:
+                self._view = (rgb, overlay)
+
     def _on_rgb(self, msg: Image) -> None:
-        if self._busy or not self._enabled:
+        rgb = np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step // 3, 3)[:, :msg.width]
+        if self._busy:
+            self._show(rgb, Overlay(mode=self._phase or 'grabbing', color=self._busy_color))
+            return
+        if not self._enabled:
+            self._show(rgb, Overlay())
             return
         now = time.monotonic()
-        rgb = np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step // 3, 3)[:, :msg.width]
         with self._lock:
             depth = self._depth
         blobs = detect_cubes(rgb, self.lab, self.colors, self.p['min_blob_area'], self.p['min_fill'],
@@ -199,9 +223,11 @@ class TrackSortNode(Node):
             self.follower.lost(now)
             self.gate.reset()
             self._status(now, 'searching')
+            self._show(rgb, Overlay())
             return
         color, x, y, z = tracked
         if raw_blob is None:                    # brief dropout: hold still, keep the clock
+            self._show(rgb, Overlay('following', color, x, y, 0.0, z, self.gate.progress))
             self.follower.lost(now)
             self._status(now, f'following {color} (held) z={z if z is None else round(z, 3)} '
                               f'still={self.gate.progress:.0%}')
@@ -214,7 +240,9 @@ class TrackSortNode(Node):
         still = self.gate.update(x, y, self.follower.last_rate, now)
         self._status(now, f'following {color} z={z if z is None else round(z, 3)} '
                           f'still={self.gate.progress:.0%}')
+        self._show(rgb, Overlay('following', color, x, y, raw_blob.radius, z, self.gate.progress))
         if still and z is not None and self._k is not None:
+            self._busy_color, self._phase = color, 'grabbing'
             self._busy = True
             blob = Blob(color, x, y, raw_blob.radius, raw_blob.fill)
             threading.Thread(target=self._grab, args=(blob, z, now), daemon=True).start()
@@ -286,6 +314,7 @@ class TrackSortNode(Node):
             lifted = self._ik(target + np.array([0.0, 0.0, self.p['lift']]), pitch)
             if lifted:
                 self._move(lifted, 0.8)
+            self._phase = 'placing'
             set_servo_position(self.servo_pub, 1.0, LOOKOUT + ((10, self.p['gripper_close']),))
             time.sleep(1.2)
             self.actions.run_action(self.places[blob.color])
@@ -303,7 +332,33 @@ class TrackSortNode(Node):
                 confirm_duration=self.p['still_seconds'], place_action=self.places[blob.color],
                 cycle_duration=time.monotonic() - t_commit, outcome=outcome, detail=detail))
             self._home()
+            self._phase = None
             self._busy = False
+
+    def _display_loop(self) -> None:
+        """All OpenCV GUI calls live in this one thread, at a capped rate, so a
+        slow screen can only skip frames, never delay the tracking."""
+        import cv2
+        name = 'JetRover'
+        try:
+            cv2.namedWindow(name, cv2.WINDOW_NORMAL)
+            if self.p['display_fullscreen']:
+                cv2.setWindowProperty(name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        except cv2.error as exc:
+            self.get_logger().warn(f'display disabled, no screen available: {exc}')
+            return
+        period = 1.0 / max(self.p['display_fps'], 1.0)
+        while rclpy.ok():
+            t0 = time.monotonic()
+            with self._view_lock:
+                view = self._view
+            if view is not None:
+                try:
+                    cv2.imshow(name, render(view[0], view[1], self._texts, self.p['display_mirror']))
+                except Exception as exc:  # noqa: BLE001 - the display must never take the demo down
+                    self.get_logger().warn(f'display error: {exc}', throttle_duration_sec=5.0)
+            cv2.waitKey(1)
+            time.sleep(max(0.0, period - (time.monotonic() - t0)))
 
     def park(self) -> None:
         self._enabled = False
