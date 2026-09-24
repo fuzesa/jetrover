@@ -4,7 +4,7 @@ track_sort:
     colors: ['red', 'green', 'blue']
     place_actions: ['place_side', 'place_side', 'place_side']   # same order
     action_group_dir: '/home/ubuntu/share/arm_pc/ActionGroups'
-    lab_config: '/home/ubuntu/share/lab_tool/lab_config.yaml'
+    lab_config: '/home/ubuntu/share/lab_tool/lab_config_handheld.yaml'
     log_dir: '/home/ubuntu/share/tmp/jetrover_logs'
     autostart: true
 
