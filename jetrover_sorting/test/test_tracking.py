@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 from jetrover_sorting.tracking import (Blob, Follower, FollowerConfig, StillnessGate, TargetFilter,
-                                       depth_at, depth_of_blob, detect_cubes, pick_target)
+                                       depth_at, depth_of_blob, detect_cubes, pick_target,
+                                       size_fits_distance)
 
 LAB = {'red': {'min': [0, 142, 125], 'max': [255, 255, 255]},
        'green': {'min': [30, 0, 105], 'max': [255, 113, 255]},
@@ -180,3 +181,25 @@ def test_separate_pitch_gain():
     g.update(0.1, 0.1, 0.0)
     g.update(0.1, 0.1, 0.1)
     assert g.last_step[0] == pytest.approx(g.last_step[1])     # default: same gain
+
+
+FX = 359.0   # measured on the robot
+
+
+def test_size_fits_distance_matches_real_cube_measurements():
+    assert size_fits_distance(24, 0.316, FX)       # cube on the table mark, 2026-09-19
+    assert size_fits_distance(38, 0.20, FX)        # held at 20 cm
+    assert size_fits_distance(25, 0.20, FX)        # partly hidden by fingers
+    assert not size_fits_distance(90, 0.154, FX)   # a patch of jeans at 15 cm
+    assert not size_fits_distance(6, 0.40, FX)     # something much smaller than a cube
+
+
+def test_pick_target_skips_jeans_and_takes_the_cube():
+    d = np.full((360, 640), 900, np.uint16)
+    d[60:300, 0:260] = 160                          # jeans, 16 cm away, big blob
+    d[150:230, 420:500] = 220                       # cube, 22 cm away
+    jeans = Blob('blue', 130, 180, 110, 0.7)
+    cube = Blob('red', 460, 190, 35, 0.8)
+    assert pick_target([jeans, cube], d, 0.12, 0.45, FX)[0] is cube
+    assert pick_target([jeans], d, 0.12, 0.45, FX) is None
+    assert pick_target([jeans, cube], d, 0.12, 0.45)[0] is jeans     # without fx: no size check

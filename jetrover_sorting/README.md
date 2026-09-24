@@ -72,3 +72,14 @@ the arm hunts (lower `track_gain`) or lags (raise it).
 
 The `_tank` action groups are generated, not committed:
 `python3 tools/make_tank_actions.py 13 --close 570 --hold 620`.
+
+## Exhibition: one command
+
+On the robot host (not in the container):
+
+    ~/docker/tmp/jetrover/jetrover_sorting/tools/start_demo.sh
+
+It stops the vendor app service, pins the CPU clocks, starts the container and
+runs `exhibition.launch.py` (lean stack + track_sort). Ctrl-C stops it.
+After a code or config change: rsync from the Mac, then run it again. New
+files (like a new launch file) need one `colcon build` in the container first.

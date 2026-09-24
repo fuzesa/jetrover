@@ -120,7 +120,7 @@ class TrackSortNode(Node):
             'log_dir': '/home/ubuntu/share/tmp/jetrover_logs',
             'autostart': True,
             'min_blob_area': 80, 'min_fill': 0.5, 'border_fill': 0.2,
-            'min_range': 0.12, 'max_range': 0.45,
+            'min_range': 0.12, 'max_range': 0.45, 'size_min': 0.5, 'size_max': 1.6,
             'track_gain': 1200.0, 'track_gain_pitch': 1200.0, 'track_max_rate': 400.0, 'track_deadband': 0.02,
             'still_seconds': 0.75, 'still_radius_px': 12.0, 'still_max_rate': 80.0,
             'servo_duration_min': 0.08,
@@ -188,7 +188,9 @@ class TrackSortNode(Node):
             depth = self._depth
         blobs = detect_cubes(rgb, self.lab, self.colors, self.p['min_blob_area'], self.p['min_fill'],
                              border_fill=self.p['border_fill'])
-        target = pick_target(blobs, depth, self.p['min_range'], self.p['max_range'])
+        fx = self._k[0] if self._k is not None else None
+        target = pick_target(blobs, depth, self.p['min_range'], self.p['max_range'],
+                             fx, self.p['size_min'], self.p['size_max'])
         self._frames += 1
         raw_blob, raw_z = target if target is not None else (None, None)
         tracked = self.filter.update(raw_blob, raw_z, now)

@@ -14,6 +14,8 @@ track_sort:
     border_fill: 0.2         # looser limit for blobs cut off by the image edge
     min_range: 0.12          # m; blobs measurably outside this range are ignored
     max_range: 0.45
+    size_min: 0.5            # blob size / size expected for a 30 mm cube at its measured distance
+    size_max: 1.6            # rejects jeans and shirts up close
 
     # following (servo units per second per unit of image error; capped)
     track_gain: 900.0        # left-right

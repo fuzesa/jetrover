@@ -193,14 +193,31 @@ class StillnessGate:
         return min(1.0, (self._hist[-1][0] - self._hist[0][0]) / self.hold_s)
 
 
-def pick_target(blobs: list[Blob], depth_mm, min_range: float, max_range: float):
-    """Largest blob whose depth is unknown-but-plausible or within range.
+CUBE_HALF_DIAG = 0.0212   # m; 30 mm cube face, centre to corner
+
+
+def size_fits_distance(radius_px: float, z: float, fx: float,
+                       lo: float = 0.5, hi: float = 1.6) -> bool:
+    """A cube at distance z has an enclosing-circle radius of about
+    fx * CUBE_HALF_DIAG / z pixels. Jeans or a shirt at arm's length are far
+    bigger than that; fingers hiding part of the cube make it a bit smaller."""
+    expected = fx * CUBE_HALF_DIAG / z
+    return lo * expected <= radius_px <= hi * expected
+
+
+def pick_target(blobs: list[Blob], depth_mm, min_range: float, max_range: float,
+                fx: Optional[float] = None, size_lo: float = 0.5, size_hi: float = 1.6):
+    """Largest blob whose depth is unknown-but-plausible or within range, and
+    (when fx is known) whose size fits a cube at that depth.
     Returns (blob, depth_m or None). Blobs that are measurably too far (a
-    shirt across the room) are dropped; too close is kept but flagged as None."""
+    shirt across the room) or the wrong size for their distance (jeans up
+    close) are dropped; too close is kept but flagged as None."""
     best = None
     for b in sorted(blobs, key=lambda b: -b.radius):
         z = depth_of_blob(depth_mm, b) if depth_mm is not None else None
         if z is not None and (z > max_range or z < min_range):
+            continue
+        if z is not None and fx and not size_fits_distance(b.radius, z, fx, size_lo, size_hi):
             continue
         best = (b, z)
         break
