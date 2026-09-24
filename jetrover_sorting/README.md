@@ -93,6 +93,7 @@ full screen, 12 fps, drawn in its own thread; if no screen is available the
 node logs a warning and carries on without it. Texts are configurable (ASCII
 only; a Romanian set is in the config, commented out). For two monitors, set
 them to mirror each other in the Nano's display settings.
+A double-click on the camera view stops the whole demo (the arm parks first).
 
 ## Desktop icons (no keyboard needed)
 

@@ -111,6 +111,7 @@ class TrackSortNode(Node):
         self.create_service(Trigger, '~/stop', self._srv_stop)
 
         self._ready = False
+        self.exit_requested = threading.Event()   # set by a double-click on the screen
         self._phase = None            # None | 'grabbing' | 'placing' while busy
         self._view = None             # (rgb, Overlay) for the display thread
         self._view_lock = threading.Lock()
@@ -340,15 +341,21 @@ class TrackSortNode(Node):
         slow screen can only skip frames, never delay the tracking."""
         import cv2
         name = 'JetRover'
+        def on_mouse(event, *_):
+            if event == cv2.EVENT_LBUTTONDBLCLK and not self.exit_requested.is_set():
+                self.get_logger().info('double-click on the screen: shutting down')
+                self.exit_requested.set()
+
         try:
             cv2.namedWindow(name, cv2.WINDOW_NORMAL)
             if self.p['display_fullscreen']:
                 cv2.setWindowProperty(name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            cv2.setMouseCallback(name, on_mouse)
         except cv2.error as exc:
             self.get_logger().warn(f'display disabled, no screen available: {exc}')
             return
         period = 1.0 / max(self.p['display_fps'], 1.0)
-        while rclpy.ok():
+        while rclpy.ok() and not self.exit_requested.is_set():
             t0 = time.monotonic()
             with self._view_lock:
                 view = self._view
@@ -359,6 +366,11 @@ class TrackSortNode(Node):
                     self.get_logger().warn(f'display error: {exc}', throttle_duration_sec=5.0)
             cv2.waitKey(1)
             time.sleep(max(0.0, period - (time.monotonic() - t0)))
+        try:
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
+        except cv2.error:
+            pass
 
     def park(self) -> None:
         self._enabled = False
@@ -378,7 +390,7 @@ def main() -> None:
     executor = MultiThreadedExecutor(num_threads=3)
     executor.add_node(node)
     try:
-        while rclpy.ok() and not stop.is_set():
+        while rclpy.ok() and not stop.is_set() and not node.exit_requested.is_set():
             executor.spin_once(timeout_sec=0.1)
     finally:
         node.park()
