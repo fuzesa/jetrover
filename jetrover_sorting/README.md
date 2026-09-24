@@ -93,3 +93,16 @@ full screen, 12 fps, drawn in its own thread; if no screen is available the
 node logs a warning and carries on without it. Texts are configurable (ASCII
 only; a Romanian set is in the config, commented out). For two monitors, set
 them to mirror each other in the Nano's display settings.
+
+## Desktop icons (no keyboard needed)
+
+One-time, over SSH on the robot host (asks for the sudo password once):
+
+    ~/docker/tmp/jetrover/jetrover_sorting/tools/desktop/install.sh
+
+It allows the two root commands of `start_demo.sh` (stopping the vendor app
+service, `jetson_clocks`) without a password, and puts two icons on the
+desktop: "Start robot demo" and "Stop robot demo". Stop lets a grab in
+progress finish and returns the arm to its look-out pose. Starting while the
+demo is already running restarts it. To undo: delete the two icons and
+`sudo rm /etc/sudoers.d/jetrover-demo`.
