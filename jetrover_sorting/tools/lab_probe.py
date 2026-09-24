@@ -4,6 +4,7 @@
 Put one cube on the mark (arm in pick_init, camera stream running), then:
 
     python3 lab_probe.py green          # label is free text: red / green / blue / table
+    python3 lab_probe.py palm --center  # hand-held demo: patch at the image centre
 
 Grabs 30 frames and runs them through the same pipeline as the vendor colour
 detector (RGB -> BGR -> LAB, 3x3 Gaussian blur). It then finds the object by
@@ -30,6 +31,15 @@ MARGIN = 20             # the detector searches the pick window grown by this
 CHROMA_DIST = 18        # A/B distance from the background that counts as "object"
 MIN_AREA = 150          # px; smaller blobs are ignored
 FRAMES = 30
+
+
+CENTER_HALF = 15        # --center: 30x30 patch at the image centre
+
+
+def center_patch(lab):
+    h, w = lab.shape[:2]
+    cy, cx = h // 2, w // 2
+    return lab[cy - CENTER_HALF:cy + CENTER_HALF, cx - CENTER_HALF:cx + CENTER_HALF].reshape(-1, 3)
 
 
 def to_detector_lab(rgb):
@@ -100,12 +110,15 @@ def main():
     from rclpy.node import Node
     from sensor_msgs.msg import Image
 
-    label = sys.argv[1] if len(sys.argv) > 1 else 'unlabelled'
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    centre = '--center' in sys.argv
+    label = args[0] if args else 'unlabelled'
+    frames = 90 if centre else FRAMES
     with open(LAB_CONFIG) as fh:
         lab = yaml.safe_load(fh)['lab']['Stereo']
     thresholds = {c: lab[c] for c in ('red', 'green', 'blue') if c in lab}
 
-    want_object = label != 'surface'
+    want_object = label != 'surface' and not centre
     rclpy.init()
     node = Node('lab_probe')
     samples, last = [], {}
@@ -113,18 +126,38 @@ def main():
     def on_image(msg):
         rgb = np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step // 3, 3)[:, :msg.width]
         bgr, lab_img = to_detector_lab(np.ascontiguousarray(rgb))
+        if centre:
+            samples.append(center_patch(lab_img))
+            last.update(bgr=bgr, mask=None)
+            return
         mask = object_mask(lab_img) if want_object else None
         samples.append(sample(lab_img, mask))
         last.update(bgr=bgr, mask=mask)
 
     node.create_subscription(Image, '/depth_cam/rgb/image_raw', on_image, 1)
-    print(f'collecting {FRAMES} frames for "{label}" ...')
-    while rclpy.ok() and len(samples) < FRAMES:
+    if centre:
+        print(f'collecting {frames} frames (~3 s) for "{label}": hold it over the centre of the image,')
+        print('covering the middle of the screen, and turn it slowly so every face is seen ...')
+    else:
+        print(f'collecting {frames} frames for "{label}" ...')
+    while rclpy.ok() and len(samples) < frames:
         rclpy.spin_once(node, timeout_sec=1.0)
         if not samples:
             print('  (no image yet - is the launch running?)')
 
     report(label, summarize(np.vstack(samples)), thresholds)
+    if centre:
+        img = last['bgr'].copy()
+        h, w = img.shape[:2]
+        cv2.rectangle(img, (w // 2 - CENTER_HALF, h // 2 - CENTER_HALF),
+                      (w // 2 + CENTER_HALF, h // 2 + CENTER_HALF), (255, 255, 255), 2)
+        os.makedirs(OUT_DIR, exist_ok=True)
+        path = os.path.join(OUT_DIR, f'probe_{label}.png')
+        cv2.imwrite(path, img)
+        print(f'  snapshot: {path}')
+        node.destroy_node()
+        rclpy.shutdown()
+        return
     mask = last['mask']
     if want_object and mask is None:
         print('  NOTE: no object found in the window - these numbers are the bare surface')
