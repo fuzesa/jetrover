@@ -41,7 +41,7 @@ track_sort:
     lift: 0.03
 
     # screen on the Nano showing what the robot sees (needs DISPLAY=:0, see README)
-    display: false
+    display: true
     display_fps: 12.0            # capped so the screen never slows down tracking
     display_fullscreen: true
     display_mirror: true         # show it like a mirror to people facing the robot
