@@ -2,7 +2,7 @@
 track_sort:
   ros__parameters:
     colors: ['red', 'green', 'blue']
-    place_actions: ['place_center_tank', 'place_left_tank', 'place_right_tank']   # same order
+    place_actions: ['place_side', 'place_side', 'place_side']   # same order
     action_group_dir: '/home/ubuntu/share/arm_pc/ActionGroups'
     lab_config: '/home/ubuntu/share/lab_tool/lab_config.yaml'
     log_dir: '/home/ubuntu/share/tmp/jetrover_logs'
@@ -46,16 +46,16 @@ track_sort:
     display_fullscreen: true
     display_mirror: true         # show it like a mirror to people facing the robot
     # ASCII only (no diacritics); {color} is replaced by the colour name below
-    text_searching: 'Show me a cube!'
-    text_following: 'I see a {color} cube'
-    text_steady: 'Hold it still...'
-    text_grabbing: 'Got it!'
-    text_placing: 'The {color} cube goes in its box'
-    text_colors: ['red', 'green', 'blue']      # same order as colors
+    # text_searching: 'Show me a cube!'
+    # text_following: 'I see a {color} cube'
+    # text_steady: 'Hold it still...'
+    # text_grabbing: 'Got it!'
+    # text_placing: 'The {color} cube goes in its box'
+    # text_colors: ['red', 'green', 'blue']      # same order as colors
     # Romanian:
-    # text_searching: 'Arata-mi un cub!'
-    # text_following: 'Vad un cub {color}'
-    # text_steady: 'Tine-l nemiscat...'
-    # text_grabbing: 'L-am prins!'
-    # text_placing: 'Cubul {color} merge in cutia lui'
-    # text_colors: ['rosu', 'verde', 'albastru']
+    text_searching: 'Arata-mi un cub!'
+    text_following: 'Vad un cub {color}'
+    text_steady: 'Tine-l nemiscat...'
+    text_grabbing: 'L-am prins!'
+    text_placing: 'Pun cubul {color} in cutie'
+    text_colors: ['rosu', 'verde', 'albastru']
