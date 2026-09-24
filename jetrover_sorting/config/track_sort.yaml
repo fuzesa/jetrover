@@ -53,6 +53,8 @@ track_sort:
     # text_grabbing: 'Got it!'
     # text_placing: 'The {color} cube goes in its box'
     # text_colors: ['red', 'green', 'blue']      # same order as colors
+    # text_too_far: 'Bring it closer'
+    # text_too_close: 'It's too close!'
     # Romanian:
     text_searching: 'Arata-mi un cub!'
     text_following: 'Vad un cub {color}'
@@ -60,3 +62,5 @@ track_sort:
     text_grabbing: 'L-am prins!'
     text_placing: 'Pun cubul {color} in cutie'
     text_colors: ['rosu', 'verde', 'albastru']
+    text_too_far: 'Apropie cubul!'
+    text_too_close: 'Departeaza putin cubul!'
