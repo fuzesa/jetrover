@@ -12,7 +12,7 @@ DISPLAY=:0 xhost +local: >/dev/null 2>&1 || echo '   (no screen found - running 
 echo '== starting the container'
 docker start jetrover >/dev/null
 echo '== stopping any demo that is already running'
-docker exec jetrover pkill -INT -f 'ros2 launch jetrover_sorting' 2>/dev/null && sleep 8 || true
+bash "$(dirname "$0")/stop_demo.sh"
 echo '== launching (Ctrl-C or the stop icon to stop)'
 exec docker exec -it -e DISPLAY=:0 -u ubuntu -w /home/ubuntu jetrover zsh -ic \
     'source /home/ubuntu/ros2_ws/install/setup.zsh && cd ~ && ros2 launch jetrover_sorting exhibition.launch.py'

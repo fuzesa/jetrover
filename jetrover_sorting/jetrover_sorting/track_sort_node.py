@@ -139,6 +139,7 @@ class TrackSortNode(Node):
             'gripper_open': 200, 'gripper_close': 600,
             'reach_seconds': 1.2, 'lift': 0.03,
             'smoothing': 0.5, 'lost_hold': 0.3, 'depth_hold': 0.6,
+            'park_action': 'init',        # played on shutdown; '' to stay in the look-out pose
             'display': False, 'display_fps': 12.0, 'display_fullscreen': True, 'display_mirror': True,
             'text_searching': 'Show me a cube!', 'text_following': 'I see a {color} cube',
             'text_steady': 'Hold it still...', 'text_grabbing': 'Got it!',
@@ -373,11 +374,22 @@ class TrackSortNode(Node):
             pass
 
     def park(self) -> None:
+        """Let a grab in progress finish, then fold the arm to its rest pose."""
         self._enabled = False
         t0 = time.monotonic()
         while self._busy and time.monotonic() - t0 < 15.0:
             time.sleep(0.1)
         self._home()
+        name = self.p['park_action']
+        if name:
+            if os.path.isfile(os.path.join(self.p['action_group_dir'], name + '.d6a')):
+                self.get_logger().info(f'parking: {name}')
+                try:
+                    self.actions.run_action(name)
+                except Exception as exc:  # noqa: BLE001
+                    self.get_logger().warn(f'park failed: {exc}')
+            else:
+                self.get_logger().warn(f'park action {name} not found, staying in the look-out pose')
         self.log.close()
 
 

@@ -35,6 +35,7 @@ track_sort:
     # grasp (vendor offsets: cube radius + measured bias; rgb/depth baseline)
     depth_offset: 0.03
     x_offset: -0.01
+    park_action: 'init'      # folded rest pose on shutdown; '' to stay in the look-out pose
     gripper_open: 200
     gripper_close: 600
     reach_seconds: 1.2
