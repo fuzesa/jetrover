@@ -118,7 +118,8 @@ class TrackSortNode(Node):
         if p['display']:
             self._texts = Texts(p['text_searching'], p['text_following'], p['text_steady'],
                                 p['text_grabbing'], p['text_placing'],
-                                dict(zip(self.colors, p['text_colors'])))
+                                dict(zip(self.colors, p['text_colors'])),
+                                p['text_too_far'], p['text_too_close'])
             threading.Thread(target=self._display_loop, daemon=True, name='display').start()
         self.create_timer(0.5, self._bringup)
 
@@ -145,6 +146,8 @@ class TrackSortNode(Node):
             'text_steady': 'Hold it still...', 'text_grabbing': 'Got it!',
             'text_placing': 'The {color} cube goes in its box',
             'text_colors': ['red', 'green', 'blue'],
+            'text_too_far': 'Come closer!', 'text_too_close': 'Move it back a little!',
+            'hint_far': 0.33, 'hint_near': 0.16,
         }
         return {k: self.declare_parameter(k, v).value for k, v in d.items()}
 
@@ -242,12 +245,25 @@ class TrackSortNode(Node):
         still = self.gate.update(x, y, self.follower.last_rate, now)
         self._status(now, f'following {color} z={z if z is None else round(z, 3)} '
                           f'still={self.gate.progress:.0%}')
-        self._show(rgb, Overlay('following', color, x, y, raw_blob.radius, z, self.gate.progress))
+        self._show(rgb, Overlay('following', color, x, y, raw_blob.radius, z, self.gate.progress,
+                                self._hint(z, raw_blob.radius)))
         if still and z is not None and self._k is not None:
             self._busy_color, self._phase = color, 'grabbing'
             self._busy = True
             blob = Blob(color, x, y, raw_blob.radius, raw_blob.fill)
             threading.Thread(target=self._grab, args=(blob, z, now), daemon=True).start()
+
+    def _hint(self, z, radius: float):
+        """'far' / 'close' / None for the display. Under ~15 cm the depth camera
+        returns nothing, so a big blob without depth also counts as too close."""
+        if z is None:
+            fx = self._k[0] if self._k is not None else 359.0
+            return 'close' if radius > fx * 0.0212 / self.p['hint_near'] else None
+        if z > self.p['hint_far']:
+            return 'far'
+        if z < self.p['hint_near']:
+            return 'close'
+        return None
 
     def _status(self, now: float, text: str) -> None:
         if now - self._last_status > 0.5:

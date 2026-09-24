@@ -37,3 +37,12 @@ def test_every_mode_renders_with_romanian_texts():
     for mode in ('searching', 'following', 'grabbing', 'placing'):
         out = render(frame(), Overlay(mode, 'blue', 320, 180, 25, None, 0.9), t)
         assert out.shape == (360, 640, 3)
+
+
+def test_distance_hints_replace_the_headline():
+    t = Texts()
+    base = dict(mode='following', color='red', x=320, y=180, radius=30, z=0.4, progress=0.5)
+    far = render(frame(), Overlay(**base, hint='far'), t)
+    near = render(frame(), Overlay(**base, hint='close'), t)
+    none = render(frame(), Overlay(**base), t)
+    assert not np.array_equal(far[:60], none[:60]) and not np.array_equal(far[:60], near[:60])

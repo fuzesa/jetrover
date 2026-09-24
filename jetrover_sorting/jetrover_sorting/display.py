@@ -23,6 +23,8 @@ class Texts:
     steady: str = 'Hold it still...'
     grabbing: str = 'Got it!'
     placing: str = 'The {color} cube goes in its box'
+    too_far: str = 'Come closer!'
+    too_close: str = 'Move it back a little!'
     colors: dict = field(default_factory=lambda: {'red': 'red', 'green': 'green', 'blue': 'blue'})
 
 
@@ -35,6 +37,7 @@ class Overlay:
     radius: float = 0.0
     z: Optional[float] = None        # metres
     progress: float = 0.0            # stillness 0..1
+    hint: Optional[str] = None       # None | 'far' | 'close'
 
 
 def _text(img, text, org, scale, thickness, color=WHITE, anchor='left'):
@@ -67,6 +70,10 @@ def render(rgb, ov: Overlay, texts: Texts, mirror: bool = True):
 
     if ov.mode == 'searching':
         headline = texts.searching
+    elif ov.mode == 'following' and ov.hint == 'far':
+        headline = texts.too_far
+    elif ov.mode == 'following' and ov.hint == 'close':
+        headline = texts.too_close
     elif ov.mode == 'following':
         headline = texts.steady if ov.progress > 0.15 else texts.following.format(color=name)
     elif ov.mode == 'grabbing':
